@@ -17,6 +17,18 @@ __all__ = ('identity', 'apply', 'thread_first', 'thread_last', 'memoize',
 PYPY = hasattr(sys, 'pypy_version_info')
 
 
+try:
+    from cloudpickle import (
+        dumps,
+        loads,
+    )
+except ModuleNotFoundError:
+    from pickle import (
+        dumps,
+        loads,
+    )
+
+
 def identity(x):
     """ Identity function. Return x
 
@@ -352,20 +364,23 @@ class curry(object):
             qualname = getattr(func, '__name__', None)
         is_decorated = None
         if modname and qualname:
-            attrs = []
-            obj = import_module(modname)
-            for attr in qualname.split('.'):
-                if isinstance(obj, curry):
-                    attrs.append('func')
-                    obj = obj.func
-                obj = getattr(obj, attr, None)
-                if obj is None:
-                    break
-                attrs.append(attr)
-            if isinstance(obj, curry) and obj.func is func:
-                is_decorated = obj is self
-                qualname = '.'.join(attrs)
-                func = '%s:%s' % (modname, qualname)
+            if modname == "__main__":
+                func = dumps(func)
+            else:
+                attrs = []
+                obj = import_module(modname)
+                for attr in qualname.split('.'):
+                    if isinstance(obj, curry):
+                        attrs.append('func')
+                        obj = obj.func
+                    obj = getattr(obj, attr, None)
+                    if obj is None:
+                        break
+                    attrs.append(attr)
+                if isinstance(obj, curry) and obj.func is func:
+                    is_decorated = obj is self
+                    qualname = '.'.join(attrs)
+                    func = '%s:%s' % (modname, qualname)
 
         # functools.partial objects can't be pickled
         userdict = tuple((k, v) for k, v in self.__dict__.items()
@@ -384,6 +399,8 @@ def _restore_curry(cls, func, args, kwargs, userdict, is_decorated):
         if is_decorated:
             return obj
         func = obj.func
+    elif isinstance(func, bytes):
+        func = loads(func)
     obj = cls(func, *args, **(kwargs or {}))
     obj.__dict__.update(userdict)
     return obj
